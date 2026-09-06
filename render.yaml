@@ -1,6 +1,11 @@
-# Blueprint de Render: backend Go + frontend estático.
-# Aplicar desde el dashboard con "New +  Blueprint" apuntando a este repositorio.
+# Blueprint de Render: backend Go + scraper Python + frontend estático.
+# Aplicar desde el dashboard con "New + Blueprint" apuntando a este repositorio.
+# Base de datos: Supabase (PostgreSQL + PostGIS). El schema se crea solo al
+# arrancar el backend (db.go es idempotente), así que Supabase arranca vacía.
 services:
+  # Backend API (Go). Render free no incluye Python, así que el scraper por
+  # subproceso queda desactivado (SCRAPER_INTERVALO_MINUTOS=0): el scraping lo
+  # maneja el servicio bassonicos-scraper (Python) más abajo.
   - type: web
     name: bassonicos-backend
     runtime: go
@@ -28,14 +33,57 @@ services:
       - key: DB_SSLMODE
         value: require
       - key: SCRAPER_INTERVALO_MINUTOS
-        value: 2880
+        value: 0
       - key: KEEP_ALIVE_URL
         sync: false
       - key: JWT_SECRET
         sync: false
+      - key: ADMIN_TOKEN
+        sync: false
+      - key: CORS_ORIGINS
+        sync: false
+      - key: SITIO_WEB
+        sync: false
+      - key: VAPID_PUBLIC_KEY
+        sync: false
+      - key: VAPID_PRIVATE_KEY
+        sync: false
+      - key: VAPID_SUBJECT
+        value: mailto:soporte@bassonicos.com
       - key: PYTHON_CMD
         sync: false
 
+  # Scraper diario (Python free). Expone un endpoint HTTP mínimo que un
+  # "despertador" externo (UptimeRobot/cron-job.org) pinguea cada ~10 min para
+  # que Render no duerma la instancia. Corrida inmediata + cada 24 h a
+  # SCRAPER_HORA_UTC (default 08:00 UTC = 05:00 ART). Escribe directo en Supabase.
+  - type: web
+    name: bassonicos-scraper
+    runtime: python
+    plan: free
+    rootDir: scraper
+    buildCommand: pip install -r requirements.txt
+    startCommand: python server.py
+    healthCheckPath: /
+    autoDeploy: true
+    envVars:
+      - key: DB_HOST
+        sync: false
+      - key: DB_PORT
+        value: 5432
+      - key: DB_NAME
+        sync: false
+      - key: DB_USER
+        sync: false
+      - key: DB_PASSWORD
+        sync: false
+      - key: DB_SSLMODE
+        value: require
+      - key: SCRAPER_HORA_UTC
+        value: 08:00
+
+  # Frontend estático (React/Vite). VITE_API_URL debe apuntar al URL público
+  # del backend (se resuelve en build time): https://<backend>.onrender.com
   - type: web
     name: bassonicos-frontend
     runtime: static
