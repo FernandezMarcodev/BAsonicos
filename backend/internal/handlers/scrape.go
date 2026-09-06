@@ -9,18 +9,20 @@ import (
 )
 
 // ScrapeConciertos: GET /scrape_conciertos_agendade
-// Dispara el script Python de scrapeo (público y automático, igual que en el
-// sistema original; no tiene relación con el registro/login). Tras un scrapeo
-// exitoso registra las notificaciones de conciertos nuevos para artistas seguidos.
+// Dispara el script Python de scrapeo (protegido por middleware.Admin + rate-limit).
+// Tras un scrapeo exitoso registra las notificaciones de conciertos nuevos para
+// artistas seguidos.
 func (a *App) ScrapeConciertos(c *gin.Context) {
 	res, err := services.EjecutarScraperYRegistrarNovedades(c.Request.Context(), a.Cfg, a.Pool, "scrape")
 	if err != nil {
-		c.JSON(http.StatusOK, gin.H{"error": err.Error(), "mensaje": "El scrapeo falló, revisá el log"})
+		// No exponer el error interno (paths, DSN, stack traces) hacia el cliente.
+		c.Error(err) // queda registrado en el log del servidor por gin.
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "El scrapeo falló, revisá los registros del servidor"})
 		return
 	}
 	msg := "Scrapeo completado"
 	if !res.Exitoso {
 		msg = "Scrapeo finalizó con salida no exitosa"
 	}
-	c.JSON(http.StatusOK, gin.H{"mensaje": msg, "log": res.Log})
+	c.JSON(http.StatusOK, gin.H{"mensaje": msg})
 }

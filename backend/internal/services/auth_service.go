@@ -31,6 +31,10 @@ func VerificarPassword(hash, password string) bool {
 	return bcrypt.CompareHashAndPassword([]byte(hash), []byte(password)) == nil
 }
 
+// HashDummy es un hash bcrypt fijo. Se usa para igualar el tiempo de respuesta
+// del login cuando el email no existe, evitando enumeración de usuarios.
+const HashDummy = "$2a$10$HbO9MICJnpVEK5ViyaE5uOcbWLbakjOlkWByGIlRoOuaNAhPqFcOu"
+
 func GenerarToken(cfg config.Config, usuario models.Usuario) (string, error) {
 	now := time.Now()
 	claims := Claims{

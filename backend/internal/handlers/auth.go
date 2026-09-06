@@ -57,7 +57,14 @@ func (a *App) Login(c *gin.Context) {
 	}
 
 	usuario, err := a.obtenerUsuarioPorEmail(c, normEmail(req.Email))
-	if err != nil || !services.VerificarPassword(usuario.PasswordHash, req.Password) {
+	if err != nil {
+		// Usuario inexistente: aun así corremos bcrypt contra un hash dummy para
+		// no revelar por tiempo de respuesta si un email está o no registrado.
+		services.VerificarPassword(services.HashDummy, req.Password)
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Email o contraseña incorrectos"})
+		return
+	}
+	if !services.VerificarPassword(usuario.PasswordHash, req.Password) {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Email o contraseña incorrectos"})
 		return
 	}

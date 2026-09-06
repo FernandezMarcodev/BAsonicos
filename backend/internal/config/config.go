@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 
 	"github.com/joho/godotenv"
 )
@@ -24,6 +25,14 @@ type Config struct {
 
 	JWTSecret string
 
+	// AdminToken protege el endpoint manual de scrapeo (/scrape_conciertos_agendade).
+	// Si está vacío, ese endpoint queda fuera de servicio (el loop automático sigue).
+	AdminToken string
+
+	// CORSOrigins lista separada por comas de orígenes permitidos para CORS.
+	// Vacío en dev permite localhost; en producción debe configurarse.
+	CORSOrigins []string
+
 	PythonCmd    string
 	ScraperPath  string
 	ScraperRunDir string
@@ -42,6 +51,21 @@ func getenv(key, fallback string) string {
 		return v
 	}
 	return fallback
+}
+
+// parseCSV parte una lista separada por comas y la limpia (quita espacios y vacíos).
+func parseCSV(s string) []string {
+	if s == "" {
+		return nil
+	}
+	partes := strings.Split(s, ",")
+	limpias := make([]string, 0, len(partes))
+	for _, p := range partes {
+		if t := strings.TrimSpace(p); t != "" {
+			limpias = append(limpias, t)
+		}
+	}
+	return limpias
 }
 
 func Load() (Config, error) {
@@ -81,6 +105,9 @@ func Load() (Config, error) {
 		cfg.JWTSecret = "desarrollo_secreto_inseguro_cambiar"
 		fmt.Println("AVISO: JWT_SECRET no definido, se usa un secreto de desarrollo (definirlo para producción).")
 	}
+
+	cfg.AdminToken = getenv("ADMIN_TOKEN", "")
+	cfg.CORSOrigins = parseCSV(getenv("CORS_ORIGINS", ""))
 
 	cfg.VAPIDPublicKey = getenv("VAPID_PUBLIC_KEY", "")
 	cfg.VAPIDPrivateKey = getenv("VAPID_PRIVATE_KEY", "")
