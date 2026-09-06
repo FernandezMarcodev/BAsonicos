@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { FiList, FiMapPin } from 'react-icons/fi'
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import Encabezado from '../componentes/Encabezado'
 import Filtros from '../componentes/Filtros'
 import Mapa from '../componentes/Mapa'
@@ -11,7 +11,7 @@ import { conciertoServicio } from '../servicios/conciertoServicio'
 import { useAuth } from '../contexto/AuthContext'
 import { useFavoritos } from '../contexto/FavoritosContext'
 import { useSeguidos } from '../contexto/SeguidosContext'
-import { EVENTO_ENFOCAR_CONCIERTO } from '../eventos'
+import { normalizarTexto } from '../utilidades/texto'
 import type { CentroMapa, Concierto, FiltrosConcierto, VistaConciertos } from '../tipos'
 
 type Vista = 'mapa' | 'lista'
@@ -35,6 +35,12 @@ export default function Inicio() {
   const { idsFavoritos, cantidadFavoritos } = useFavoritos()
   const { seguidos } = useSeguidos()
   const navegar = useNavigate()
+  const ubicacion = useLocation()
+  const stateNavegacion = useMemo(
+    () => ubicacion.state as { conciertoEnfocar?: Concierto; vistaConciertos?: VistaConciertos } | null,
+    [ubicacion.state],
+  )
+  const conciertoEnfocarInicial = stateNavegacion?.conciertoEnfocar ?? null
   const [conciertoSeleccionado, setConciertoSeleccionado] = useState<Concierto | null>(null)
   const [conciertosBase, setConciertosBase] = useState<Concierto[]>([])
   const [conciertos, setConciertos] = useState<Concierto[]>([])
@@ -42,13 +48,16 @@ export default function Inicio() {
   const [error, setError] = useState<string | null>(null)
   const [centroMapa, setCentroMapa] = useState<CentroMapa | null>(null)
   const [vista, setVista] = useState<Vista>('mapa')
-  const [vistaConciertos, setVistaConciertos] = useState<VistaConciertos>('todos')
+  const [vistaConciertos, setVistaConciertos] = useState<VistaConciertos>(
+    stateNavegacion?.vistaConciertos ?? 'todos',
+  )
   const [filtros, setFiltros] = useState<FiltrosConcierto>({
     artista: '',
     radio: 5,
     ubicacionActual: null,
   })
   const refColumnaMapa = useRef<HTMLDivElement>(null)
+  const conciertoEnfocarRef = useRef(conciertoEnfocarInicial)
 
   const artistas = useMemo(
     () =>
@@ -78,13 +87,13 @@ export default function Inicio() {
   const seleccionarRef = useRef(seleccionarConcierto)
   seleccionarRef.current = seleccionarConcierto
 
+  // Si llegamos desde una notificación (route state), enfocamos el concierto.
+  // Se ejecuta una sola vez por montaje para evitar re-enfocar en cada navegación.
   useEffect(() => {
-    const alEnfocar = (evento: Event) => {
-      const concierto = (evento as CustomEvent<Concierto>).detail
-      if (concierto) seleccionarRef.current(concierto)
-    }
-    window.addEventListener(EVENTO_ENFOCAR_CONCIERTO, alEnfocar)
-    return () => window.removeEventListener(EVENTO_ENFOCAR_CONCIERTO, alEnfocar)
+    const conciertoNavegar = conciertoEnfocarRef.current
+    if (!conciertoNavegar) return
+    conciertoEnfocarRef.current = null
+    seleccionarRef.current(conciertoNavegar)
   }, [])
 
   function reiniciarFiltros() {
@@ -127,7 +136,7 @@ export default function Inicio() {
   useEffect(() => {
     if (conciertosBase.length === 0) return
     const timeout = window.setTimeout(() => {
-      const nombreArtista = filtros.artista.toLowerCase().trim()
+      const nombreArtista = normalizarTexto(filtros.artista)
       const filtrados = conciertosBase.filter((concierto) => {
         if (vistaConciertos === 'favoritos' && !idsFavoritos.has(concierto.id)) {
           return false
@@ -137,7 +146,7 @@ export default function Inicio() {
             return false
           }
         }
-        if (nombreArtista && !concierto.artista?.toLowerCase().includes(nombreArtista)) {
+        if (nombreArtista && !normalizarTexto(concierto.artista).includes(nombreArtista)) {
           return false
         }
         const coordenadas = concierto.ubicacion_detalle?.coordenadas

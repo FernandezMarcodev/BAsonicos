@@ -6,6 +6,7 @@ import {
   type ReactNode,
 } from 'react'
 import { authServicio, type Credenciales, type RegistroDatos } from '../servicios/authServicio'
+import { ErrorApi } from '../servicios/http'
 import type { Usuario } from '../tipos'
 
 const CLAVE_TOKEN = 'concierto_finder_token'
@@ -13,6 +14,8 @@ const CLAVE_TOKEN = 'concierto_finder_token'
 interface AuthContextValue {
   usuario: Usuario | null
   token: string | null
+  /* cargando = true mientras se verifica la sesión guardada al arrancar. */
+  cargando: boolean
   registrar: (datos: RegistroDatos) => Promise<void>
   iniciarSesion: (credenciales: Credenciales) => Promise<void>
   cerrarSesion: () => void
@@ -39,22 +42,34 @@ function guardarToken(token: string | null) {
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [usuario, setUsuario] = useState<Usuario | null>(null)
   const [token, setToken] = useState<string | null>(leerToken)
+  const [cargando, setCargando] = useState(() => Boolean(leerToken()))
 
   useEffect(() => {
-    if (!token) return
+    if (!token) {
+      setCargando(false)
+      return
+    }
     let activo = true
 
     authServicio
       .obtenerPerfil(token)
       .then((perfil) => {
-        if (activo) setUsuario(perfil)
-      })
-      .catch(() => {
-        guardarToken(null)
         if (activo) {
+          setUsuario(perfil)
+          setCargando(false)
+        }
+      })
+      .catch((err) => {
+        if (!activo) return
+        // Solo un 401/403 indica token inválido o expirado -> sesión cerrada.
+        // Un error de red o 5xx NO debe desloguear al usuario.
+        const esNoAutorizado = err instanceof ErrorApi && (err.status === 401 || err.status === 403)
+        if (esNoAutorizado) {
+          guardarToken(null)
           setToken(null)
           setUsuario(null)
         }
+        setCargando(false)
       })
 
     return () => {
@@ -84,7 +99,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   return (
     <AuthContext.Provider
-      value={{ usuario, token, registrar, iniciarSesion, cerrarSesion }}
+      value={{ usuario, token, cargando, registrar, iniciarSesion, cerrarSesion }}
     >
       {children}
     </AuthContext.Provider>

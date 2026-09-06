@@ -6,7 +6,6 @@ import { useFavoritos } from '../contexto/FavoritosContext'
 import { useSeguidos } from '../contexto/SeguidosContext'
 import { useTema } from '../contexto/TemaContext'
 import { useToast } from '../contexto/ToastContext'
-import { despacharEnfocarConcierto } from '../eventos'
 import * as pushServicio from '../servicios/pushServicio'
 import { artistaDuplicadoEnTitulo } from '../utilidades/texto'
 import Boton from './Boton'
@@ -139,8 +138,9 @@ function CampanaNovedades() {
   function abrirNotificacion(notificacion: Notificacion) {
     void marcarLeida(notificacion.id)
     setAbierta(false)
-    despacharEnfocarConcierto(notificacion.concierto)
-    navegar('/')
+    // El concierto viaja por route state: Inicio lo lee al montar, evitando que
+    // se pierda si esta página todavía no estaba montada.
+    navegar('/', { state: { conciertoEnfocar: notificacion.concierto } })
   }
 
   return (
@@ -252,7 +252,7 @@ function CampanaNovedades() {
 }
 
 export default function Encabezado() {
-  const { usuario, cerrarSesion } = useAuth()
+  const { usuario, cargando, cerrarSesion } = useAuth()
   const { cantidadFavoritos } = useFavoritos()
   const { modoOscuro, cambiarTema } = useTema()
   const { mostrarToast } = useToast()
@@ -285,7 +285,7 @@ export default function Encabezado() {
             <>
               {cantidadFavoritos > 0 && (
                 <button
-                  onClick={() => navegar('/')}
+                  onClick={() => navegar('/', { state: { vistaConciertos: 'favoritos' } })}
                   title="Mis favoritos"
                   aria-label={`Mis favoritos (${cantidadFavoritos})`}
                   className="relative inline-flex h-10 items-center gap-1.5 rounded-full bg-white/10 px-3 text-sm font-medium text-[#e3e2e9] transition-colors hover:bg-white/15"
@@ -315,6 +315,12 @@ export default function Encabezado() {
                 Cerrar sesión
               </Boton>
             </>
+          ) : cargando ? (
+            /* Mientras se verifica la sesión guardada no mostramos botones de login */
+            <span
+              className="h-10 w-24 animate-pulse rounded-full bg-white/10"
+              aria-label="Comprobando sesión"
+            />
           ) : (
             <>
               <EnlaceBoton variante="texto" to="/login" className="px-3.5 py-2">
