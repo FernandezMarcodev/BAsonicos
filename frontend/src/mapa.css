@@ -1,0 +1,178 @@
+/* ===== Leaflet overrides: tema Apple + Material ===== */
+
+.leaflet-container {
+  font-family: var(--font-sans);
+  background-color: #e8ecf3;
+  border-radius: 1.75rem; /* rounded-3xl */
+}
+
+.dark .leaflet-container {
+  background-color: #2b2e33;
+}
+
+/* Dark de tiles OSM: filtro que solo afecta los tiles (no a los marcadores) */
+.tiles-oscuro .leaflet-tile {
+  filter: brightness(0.55) invert(1) contrast(3) hue-rotate(200deg) saturate(0.35) brightness(0.7);
+}
+
+/* Controles de zoom redondeados y sin sombra molesta */
+.leaflet-control-zoom {
+  border: none !important;
+  border-radius: 9999px !important;
+  overflow: hidden;
+  box-shadow: var(--shadow-elevation-2) !important;
+}
+.leaflet-control-zoom a {
+  border: none !important;
+  color: #1c1f24 !important;
+  background: rgba(255, 255, 255, 0.9) !important;
+  backdrop-filter: blur(8px);
+}
+.dark .leaflet-control-zoom a {
+  color: #e3e2e9 !important;
+  background: rgba(28, 28, 30, 0.9) !important;
+}
+.leaflet-control-zoom a:first-child {
+  border-radius: 9999px 9999px 0 0 !important;
+}
+.leaflet-control-zoom a:last-child {
+  border-radius: 0 0 9999px 9999px !important;
+}
+
+/* Atribución */
+.leaflet-control-attribution {
+  font-size: 10px !important;
+  background: rgba(255, 255, 255, 0.7) !important;
+  border-radius: 9999px 0 0 0;
+}
+.dark .leaflet-control-attribution {
+  background: rgba(28, 28, 30, 0.7) !important;
+  color: #c6c5cf !important;
+}
+.dark .leaflet-control-attribution a {
+  color: #0a84ff !important;
+}
+
+/* Marcador de concierto: dropdown de Material relleno con forma Apple */
+.marcador-concierto {
+  position: relative;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.18s ease;
+  cursor: pointer;
+}
+.marcador-concierto:hover {
+  transform: scale(1.22);
+}
+.marcador-concierto .marcador-concierto__nucleo {
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(255, 255, 255, 0.95);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+}
+.marcador-concierto.disponible {
+  background-color: var(--color-accent);
+  border: 2px solid rgba(255, 255, 255, 0.95);
+  border-radius: 50% 50% 50% 50% / 45% 45% 55% 55%;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+}
+.marcador-concierto.disponible .marcador-concierto__nucleo {
+  background-color: #ffffff;
+}
+.marcador-concierto.agotado {
+  background-color: var(--color-accent);
+  border: 2px solid rgba(255, 255, 255, 0.95);
+  border-radius: 50% 50% 50% 50% / 45% 45% 55% 55%;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+}
+.marcador-concierto.agotado .marcador-concierto__nucleo {
+  background-color: #0071e3;
+}
+
+/* En tiles oscuras el agotado vuelve al gris actual, que ahí sí se ve bien. */
+.tiles-oscuro .marcador-concierto.agotado {
+  background-color: #b7b7bd;
+}
+.tiles-oscuro .marcador-concierto.agotado .marcador-concierto__nucleo {
+  background-color: #6e6e73;
+}
+
+/* Marcador seleccionado: anillo del acento + pulso */
+.marcador-concierto.seleccionado {
+  transform: scale(1.15);
+  box-shadow: 0 0 0 5px var(--color-accent-glow);
+  animation: pulso-marcador 1.6s ease-out infinite;
+}
+@keyframes pulso-marcador {
+  0% {
+    box-shadow: 0 0 0 0 var(--color-accent-glow);
+  }
+  100% {
+    box-shadow: 0 0 0 12px transparent;
+  }
+}
+
+/* Marcador de usuario */
+.marcador-usuario {
+  position: relative;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background-color: #0a84ff;
+  border: 3px solid #ffffff;
+  box-shadow: 0 0 0 3px rgba(10, 132, 255, 0.35);
+}
+.marcador-usuario::after {
+  content: '';
+  position: absolute;
+  inset: -5px;
+  border-radius: 50%;
+  border: 2px solid rgba(10, 132, 255, 0.5);
+  animation: pulso-usuario 2s ease-out infinite;
+}
+@keyframes pulso-usuario {
+  0% {
+    transform: scale(0.8);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(2.4);
+    opacity: 0;
+  }
+}
+
+/* Popup: tarjeta redondeada tipo glass */
+.leaflet-popup-content-wrapper {
+  border-radius: 1rem !important;
+  box-shadow: var(--shadow-elevation-3) !important;
+  background: rgba(255, 255, 255, 0.95) !important;
+  backdrop-filter: blur(12px);
+}
+.dark .leaflet-popup-content-wrapper {
+  background: rgba(43, 46, 51, 0.97) !important;
+  color: #e3e2e9;
+}
+/* Los textos dentro del popup usan tokens de tinta; en modo oscuro forzamos claros. */
+.dark .leaflet-popup-content-wrapper,
+.dark .leaflet-popup-content {
+  color: #e3e2e9 !important;
+}
+.leaflet-popup-content {
+  margin: 12px 16px !important;
+  line-height: 1.35;
+}
+.leaflet-popup-tip {
+  box-shadow: var(--shadow-elevation-3) !important;
+}
+.leaflet-popup-close-button {
+  padding: 6px 8px 0 0 !important;
+  font-size: 16px !important;
+  color: #c6c5cf !important;
+}
+.dark .leaflet-popup-close-button {
+  color: #c6c5cf !important;
+}

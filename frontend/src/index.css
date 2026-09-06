@@ -1,0 +1,167 @@
+@import "tailwindcss";
+
+/* Modo oscuro por clase (.dark en <html>), igual que el proyecto original. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* ===== Design tokens: modo claro azul original (sin violeta) — oscuro estilo portafolio (Material 3) ===== */
+@theme {
+  --font-sans: "SF Pro Text", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    "Helvetica Neue", "Inter", system-ui, sans-serif;
+  --font-display: "SF Pro Display", -apple-system, BlinkMacSystemFont, "Segoe UI",
+    Roboto, "Helvetica Neue", system-ui, sans-serif;
+
+  --color-primary: #0a84ff;
+  --color-primary-hover: #0071e3;
+  --color-primary-surface: #e8f1ff;
+  --color-accent: #0a84ff;
+  --color-accent-hover: #0071e3;
+  --color-accent-surface: #e8f1ff;
+  --color-secondary: #0a84ff;
+  --color-surface: #ffffff;
+  --color-surface-2: #ececf1;
+  --color-ink: #1d1d1f;
+  --color-ink-muted: #6e6e73;
+  --color-success: #34c759;
+  --color-danger: #ff3b30;
+  --color-accent-glow: rgba(10, 132, 255, 0.45);
+
+  --shadow-elevation-1: 0 1px 2px rgba(0, 0, 0, 0.05), 0 1px 3px rgba(0, 0, 0, 0.08);
+  --shadow-elevation-2: 0 2px 4px rgba(0, 0, 0, 0.04), 0 4px 12px rgba(0, 0, 0, 0.07);
+  --shadow-elevation-3: 0 4px 8px rgba(0, 0, 0, 0.06), 0 12px 32px rgba(0, 0, 0, 0.12);
+
+  --radius-2xl: 1.25rem;
+  --radius-3xl: 1.75rem;
+}
+
+/* ===== Modo oscuro: neutros del portafolio (Material 3) con el mismo acento azul ===== */
+.dark {
+  --color-primary: #0a84ff;
+  --color-primary-hover: #0071e3;
+  --color-primary-surface: #1f3857;
+  --color-accent: #0a84ff;
+  --color-accent-hover: #0071e3;
+  --color-accent-surface: #1f3857;
+  --color-secondary: #0a84ff;
+  --color-surface: #2b2e33;
+  --color-surface-2: #36393f;
+  --color-ink: #e3e2e9;
+  --color-ink-muted: #c6c5cf;
+  --color-success: #66bb6a;
+  --color-danger: #ff8a80;
+  --color-accent-glow: rgba(10, 132, 255, 0.45);
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  background-color: #f4f4f6;
+  color: #1d1d1f;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+.dark body {
+  background-color: #24262b;
+  color: #e3e2e9;
+}
+
+::selection {
+  background-color: var(--color-primary);
+  color: #fff;
+}
+
+/* Inputs de Material: foco con anillo tonal */
+input[type="range"] {
+  accent-color: var(--color-primary);
+}
+
+/* Scrollbar sutil (estilo macOS) */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background-color: rgba(0, 0, 0, 0.22);
+  border-radius: 9999px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+.dark ::-webkit-scrollbar-thumb {
+  background-color: rgba(255, 255, 255, 0.22);
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+::-webkit-scrollbar-track {
+  background-color: transparent;
+}
+
+/* ===== Ripple (Material) ===== */
+.ripple-superficie {
+  position: relative;
+  overflow: hidden;
+}
+.ripple-superficie::after {
+  content: '';
+  position: absolute;
+  z-index: 0;
+  left: var(--ripple-x, -9999px);
+  top: var(--ripple-y, -9999px);
+  width: var(--ripple-d, 1px);
+  height: var(--ripple-d, 1px);
+  border-radius: 9999px;
+  background-color: currentColor;
+  opacity: 0.2;
+  transform: scale(0);
+  pointer-events: none;
+  will-change: transform, opacity;
+}
+.ripple-superficie.auge::after {
+  animation: auge-onda 0.55s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+@keyframes auge-onda {
+  to {
+    transform: scale(1);
+    opacity: 0;
+  }
+}
+
+/* ===== Animaciones de entrada ===== */
+@keyframes subir {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.animate-subir {
+  animation: subir 0.45s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+@keyframes latido {
+  0% {
+    transform: scale(1);
+  }
+  40% {
+    transform: scale(1.35);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+.animate-latido {
+  animation: latido 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* ===== Accesibilidad: foco visible ===== */
+:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}

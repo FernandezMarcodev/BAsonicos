@@ -1,0 +1,48 @@
+# Blueprint de Render: backend Go + frontend estático.
+# Aplicar desde el dashboard con "New +  Blueprint" apuntando a este repositorio.
+services:
+  - type: web
+    name: bassonicos-backend
+    runtime: go
+    plan: free
+    rootDir: backend
+    buildCommand: go build -o server ./cmd/server
+    startCommand: ./server
+    healthCheckPath: /
+    autoDeploy: true
+    envVars:
+      - key: PORT
+        value: 10000
+      - key: HOST
+        value: 0.0.0.0
+      - key: DB_HOST
+        sync: false
+      - key: DB_PORT
+        value: 5432
+      - key: DB_NAME
+        sync: false
+      - key: DB_USER
+        sync: false
+      - key: DB_PASSWORD
+        sync: false
+      - key: DB_SSLMODE
+        value: require
+      - key: SCRAPER_INTERVALO_MINUTOS
+        value: 2880
+      - key: KEEP_ALIVE_URL
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: PYTHON_CMD
+        sync: false
+
+  - type: web
+    name: bassonicos-frontend
+    runtime: static
+    rootDir: frontend
+    buildCommand: npm install && npm run build
+    staticPublishPath: ./dist
+    autoDeploy: true
+    envVars:
+      - key: VITE_API_URL
+        sync: false

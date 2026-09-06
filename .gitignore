@@ -1,0 +1,29 @@
+# Entorno y secretos (¡no subir credenciales!)
+backend/.env
+frontend/.env
+*.env
+!.env.example
+
+# Dependencias y builds
+node_modules/
+frontend/dist/
+frontend/node_modules/
+*.log
+npm-debug.log*
+
+# Python
+scraper/.venv/
+__pycache__/
+*.pyc
+
+# Binarios locales
+backend/server.exe
+backend/server
+*.exe~
+
+# Sistema / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
