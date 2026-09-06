@@ -55,6 +55,21 @@ html {
   scroll-behavior: smooth;
 }
 
+/* Rotación del ícono luna/sol al alternar tema */
+@keyframes girar-tema {
+  from {
+    transform: rotate(0deg) scale(0.7);
+    opacity: 0;
+  }
+  to {
+    transform: rotate(360deg) scale(1);
+    opacity: 1;
+  }
+}
+.animate-girar-tema {
+  animation: girar-tema 0.4s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
 body {
   margin: 0;
   font-family: var(--font-sans);

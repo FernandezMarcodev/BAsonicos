@@ -39,7 +39,19 @@ export function TemaProvider({ children }: { children: ReactNode }) {
     }
   }, [modoOscuro])
 
-  const cambiarTema = useCallback(() => setModoOscuro((prev) => !prev), [])
+  const cambiarTema = useCallback(() => {
+    const aplicar = () => {
+      setModoOscuro((prev) => !prev)
+    }
+    // View Transition API: la página entera hace un crossfade único (todo
+    // junto), evitando que cada elemento se repinte por separado. Sin soporte
+    // del navegador se cambia al instante.
+    if (typeof document.startViewTransition === 'function') {
+      document.startViewTransition(aplicar)
+    } else {
+      aplicar()
+    }
+  }, [])
 
   const valor = useMemo(() => ({ modoOscuro, cambiarTema }), [modoOscuro, cambiarTema])
 

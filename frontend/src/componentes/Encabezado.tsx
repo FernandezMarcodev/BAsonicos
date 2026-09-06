@@ -338,7 +338,9 @@ export default function Encabezado() {
             title={modoOscuro ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro'}
             className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-lg text-[#e3e2e9] transition-colors hover:bg-white/15"
           >
-            {modoOscuro ? <FiSun /> : <FiMoon />}
+            <span key={modoOscuro ? 'sol' : 'luna'} className="animate-girar-tema inline-flex">
+              {modoOscuro ? <FiSun /> : <FiMoon />}
+            </span>
           </button>
         </div>
       </div>
