@@ -23,9 +23,31 @@ import psycopg2
 import requests
 from bs4 import BeautifulSoup
 from dotenv import load_dotenv
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 sys.stdout.reconfigure(line_buffering=True)
 sys.stderr.reconfigure(line_buffering=True)
+
+# Sesión HTTP compartida: reutiliza conexiones (menos handshakes TLS) y reintenta
+# ante errores transitorios (429/5xx/timeouts) en lugar de abortar la corrida.
+_sesion = requests.Session()
+_retry = Retry(
+    total=3,
+    connect=3,
+    read=3,
+    status=3,
+    backoff_factor=1.5,
+    status_forcelist=(429, 500, 502, 503, 504),
+    respect_retry_after_header=True,
+)
+_adapter = HTTPAdapter(max_retries=_retry, pool_connections=10, pool_maxsize=10)
+_sesion.mount("https://", _adapter)
+_sesion.mount("http://", _adapter)
+_sesion.headers.update({
+    'User-Agent': 'BAsonicos/1.0 (+https://github.com/FernandezMarcodev/BAsonicos) '
+                  'VenueLocator/1.0',
+})
 
 # Región: solo Buenos Aires y alrededores (CABA + GBA + La Plata/Cañuelas).
 AMBA_MIN_LAT = -35.15
@@ -82,11 +104,23 @@ def conectar():
 # ----------------------------------------------------------------------------
 # Geocodificación
 # ----------------------------------------------------------------------------
+# Cache de geocodificación en memoria para la corrida: evita repetir llamadas a
+# Nominatim para lugares ya consultados (incluidos los que no tienen resultado),
+# respetando su política de uso (no repetir consultas idénticas).
+_cache_geo = {}
+
+
 def get_coordenadas(location_name):
     """
     Obtiene las coordenadas usando Nominatim de OpenStreetMap (gratuito).
     Restringido a Argentina y al área AMBA para evitar geocodificar a otro país.
+    Los resultados se cachean en memoria por corrida.
     """
+    clave = (location_name or '').strip().lower()
+    if not clave:
+        return None, None
+    if clave in _cache_geo:
+        return _cache_geo[clave]
     base_url = "https://nominatim.openstreetmap.org/search"
     params = {
         'q': location_name,
@@ -94,20 +128,24 @@ def get_coordenadas(location_name):
         'limit': 5,
         'countrycodes': 'ar',
     }
-    headers = {'User-Agent': 'VenueLocator/1.0'}
     try:
-        response = requests.get(base_url, params=params, headers=headers, timeout=30)
+        # La política de uso de Nominatim pide identificar la app en el User-Agent;
+        # la sesión ya lo define, y los reintentos/backoff están en el HTTPAdapter.
+        response = _sesion.get(base_url, params=params, timeout=30)
         response.raise_for_status()
         data = response.json()
-        if data and len(data) > 0:
+        if data:
             for resultado in data:
                 lat = float(resultado['lat'])
                 lon = float(resultado['lon'])
                 if en_amba(lon, lat):
+                    _cache_geo[clave] = (str(lat), str(lon))
                     return str(lat), str(lon)
+        _cache_geo[clave] = (None, None)
         return None, None
     except Exception as e:
         print(f"Error al obtener coordenadas para {location_name}: {e}")
+        _cache_geo[clave] = (None, None)
         return None, None
 
 
@@ -115,70 +153,102 @@ def get_coordenadas(location_name):
 # Acceso a la base (psycopg2 — reemplaza SQLAlchemy/geoalchemy2)
 # ----------------------------------------------------------------------------
 def buscar_ubicacion(conn, normalizado, nombre_original):
-    cur = conn.cursor()
-    cur.execute("SELECT id, nombre FROM ubicaciones WHERE lower(trim(nombre)) = %s", (normalizado,))
-    row = cur.fetchone()
-    if row:
-        return {'id': row[0], 'nombre': row[1]}
-    cur.execute(
-        "SELECT id, nombre FROM ubicaciones WHERE nombre ILIKE %s LIMIT 1",
-        (f"%{nombre_original}%",),
-    )
-    row = cur.fetchone()
-    if row:
-        return {'id': row[0], 'nombre': row[1]}
+    with conn.cursor() as cur:
+        cur.execute("SELECT id, nombre FROM ubicaciones WHERE lower(trim(nombre)) = %s", (normalizado,))
+        row = cur.fetchone()
+        if row:
+            return {'id': row[0], 'nombre': row[1]}
+        cur.execute(
+            "SELECT id, nombre FROM ubicaciones WHERE nombre ILIKE %s LIMIT 1",
+            (f"%{nombre_original}%",),
+        )
+        row = cur.fetchone()
+        if row:
+            return {'id': row[0], 'nombre': row[1]}
     return None
 
 
 def insertar_ubicacion(conn, nombre, lon, lat):
     url_maps = f'https://www.google.com/maps/search/?api=1&query={lat},{lon}'
-    cur = conn.cursor()
-    cur.execute(
-        "INSERT INTO ubicaciones (nombre, capacidad_total, coordenadas, url_maps) "
-        "VALUES (%s, 0, ST_SetSRID(ST_MakePoint(%s, %s), 4326), %s) RETURNING id",
-        (nombre, lon, lat, url_maps),
-    )
-    nuevo_id = cur.fetchone()[0]
+    with conn.cursor() as cur:
+        cur.execute(
+            "INSERT INTO ubicaciones (nombre, capacidad_total, coordenadas, url_maps) "
+            "VALUES (%s, 0, ST_SetSRID(ST_MakePoint(%s, %s), 4326), %s) RETURNING id",
+            (nombre, lon, lat, url_maps),
+        )
+        nuevo_id = cur.fetchone()[0]
     return nuevo_id
 
 
 def obtener_punto(conn, venue_id):
-    cur = conn.cursor()
-    cur.execute(
-        "SELECT ST_X(coordenadas), ST_Y(coordenadas) FROM ubicaciones WHERE id = %s",
-        (venue_id,),
-    )
-    row = cur.fetchone()
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT ST_X(coordenadas), ST_Y(coordenadas) FROM ubicaciones WHERE id = %s",
+            (venue_id,),
+        )
+        row = cur.fetchone()
     if not row or row[0] is None or row[1] is None:
         return None
     return {'lng': float(row[0]), 'lat': float(row[1])}
 
 
 def existe_concierto(conn, artista, fecha, hora, lugar):
-    cur = conn.cursor()
-    cur.execute(
-        """
-        SELECT c.id FROM conciertos c
-        JOIN ubicaciones u ON u.id = c.ubicacion
-        WHERE lower(trim(c.artista)) = %s
-          AND c.fecha = %s
-          AND c.hora = %s
-          AND lower(trim(u.nombre)) = %s
-        LIMIT 1
-        """,
-        ((artista or '').strip().lower(), fecha, hora, lugar),
-    )
-    return cur.fetchone() is not None
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT c.id FROM conciertos c
+            JOIN ubicaciones u ON u.id = c.ubicacion
+            WHERE lower(trim(c.artista)) = %s
+              AND c.fecha = %s
+              AND c.hora = %s
+              AND lower(trim(u.nombre)) = %s
+            LIMIT 1
+            """,
+            ((artista or '').strip().lower(), fecha, hora, lugar),
+        )
+        return cur.fetchone() is not None
 
 
 def insertar_concierto(conn, nombre_evento, artista, url_evento, ubicacion_id, fecha, hora):
     url = (url_evento[:100] if url_evento else None)
-    cur = conn.cursor()
-    cur.execute(
-        "INSERT INTO conciertos (nombre, artista, url_evento, ubicacion, fecha, hora) "
-        "VALUES (%s, %s, %s, %s, %s, %s)",
-        (nombre_evento, artista, url, ubicacion_id, fecha, hora),
-    )
+    with conn.cursor() as cur:
+        cur.execute(
+            "INSERT INTO conciertos (nombre, artista, url_evento, ubicacion, fecha, hora) "
+            "VALUES (%s, %s, %s, %s, %s, %s)",
+            (nombre_evento, artista, url, ubicacion_id, fecha, hora),
+        )
+
+
+def _parsear_fecha(texto):
+    """Convierte 'dd/mm/yy', 'dd/mm/yyyy', 'dd-mm-yyyy' a 'YYYY-MM-DD'.
+
+    Años de 2 dígitos: < 70 -> 20xx, >= 70 -> 19xx (estrategia POSIX).
+    Devuelve None si el formato no se reconoce.
+    """
+    partes = texto.strip().replace('-', '/').split('/')
+    if len(partes) != 3:
+        return None
+    dia, mes, anio = (p.strip() for p in partes)
+    if not (dia.isdigit() and mes.isdigit() and anio.isdigit()):
+        return None
+    if len(anio) == 2:
+        ano_num = int(anio)
+        anio = ('19' if ano_num >= 70 else '20') + anio
+    try:
+        return datetime(int(anio), int(mes), int(dia)).strftime('%Y-%m-%d')
+    except ValueError:
+        return None
+
+
+def _parsear_hora(texto):
+    """Convierte 'HH:MM' o 'HH:MM:SS' a un objeto time. None si no coincide."""
+    hora_limpia = texto.strip()
+    for formato in ("%H:%M:%S", "%H:%M"):
+        try:
+            return datetime.strptime(hora_limpia, formato).time()
+        except ValueError:
+            continue
+    return None
 
 
 def _clave_concierto(artista, fecha, hora, lugar):
@@ -215,7 +285,7 @@ def ejecutar_scrapeo():
         while True:
             url_base = f"{URL_AGENDA}{page}"
             print("procesando pagina " + url_base)
-            response = requests.get(url_base, headers=HEADERS_NAV, timeout=30)
+            response = _sesion.get(url_base, headers=HEADERS_NAV, timeout=30)
             response.raise_for_status()
             soup = BeautifulSoup(response.content, 'html.parser')
             lista_conciertos = soup.find('div', {
@@ -238,7 +308,7 @@ def ejecutar_scrapeo():
                     url_concierto = f"https://www.agendade.com.ar{href}" if href.startswith('/') else href
 
                     time.sleep(1)
-                    response_concierto = requests.get(url_concierto, headers=HEADERS_NAV, timeout=30)
+                    response_concierto = _sesion.get(url_concierto, headers=HEADERS_NAV, timeout=30)
                     response_concierto.raise_for_status()
                     soup_concierto = BeautifulSoup(response_concierto.content, 'html.parser')
 
@@ -319,18 +389,14 @@ def ejecutar_scrapeo():
                             print(f"'{ubicacion}' está fuera del área de Buenos Aires y alrededores, no se agrega el concierto '{nombre_evento}'")
                             continue
 
-                    # Parsear fecha y hora
+                    # Parsear fecha y hora (robusto ante variantes de formato)
                     nueva_fecha = None
                     nueva_hora = None
                     try:
                         if fecha:
-                            ddmmyy = fecha.split(sep='/')
-                            nueva_fecha = '20' + ddmmyy[2] + '-' + ddmmyy[1] + '-' + ddmmyy[0]
+                            nueva_fecha = _parsear_fecha(fecha)
                         if hora:
-                            if len(hora.split(":")) == 2:
-                                nueva_hora = datetime.strptime(hora, "%H:%M").time()
-                            else:
-                                nueva_hora = datetime.strptime(hora, "%H:%M:%S").time()
+                            nueva_hora = _parsear_hora(hora)
                     except Exception:
                         pass
 
@@ -375,11 +441,11 @@ def ejecutar_scrapeo():
 # ----------------------------------------------------------------------------
 def eliminar_conciertos_pasados(conn):
     try:
-        cur = conn.cursor()
-        cur.execute("DELETE FROM conciertos WHERE fecha < CURRENT_DATE")
-        eliminados = cur.rowcount
-        print(f"Limpieza: {eliminados} conciertos pasados eliminados.")
-        return eliminados
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM conciertos WHERE fecha < CURRENT_DATE")
+            eliminados = cur.rowcount
+            print(f"Limpieza: {eliminados} conciertos pasados eliminados.")
+            return eliminados
     except Exception as e:
         print(f"Error al eliminar conciertos pasados: {e}")
         return 0
@@ -387,38 +453,38 @@ def eliminar_conciertos_pasados(conn):
 
 def eliminar_fuera_de_amba(conn):
     try:
-        cur = conn.cursor()
-        cur.execute(
-            "SELECT c.id, ST_X(u.coordenadas), ST_Y(u.coordenadas) "
-            "FROM conciertos c JOIN ubicaciones u ON u.id = c.ubicacion"
-        )
-        a_eliminar = []
-        for cid, lng, lat in cur.fetchall():
-            if lng is None or lat is None or not en_amba(float(lng), float(lat)):
-                a_eliminar.append(cid)
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT c.id, ST_X(u.coordenadas), ST_Y(u.coordenadas) "
+                "FROM conciertos c JOIN ubicaciones u ON u.id = c.ubicacion"
+            )
+            a_eliminar = []
+            for cid, lng, lat in cur.fetchall():
+                if lng is None or lat is None or not en_amba(float(lng), float(lat)):
+                    a_eliminar.append(cid)
 
-        eliminados = 0
-        if a_eliminar:
-            cur.execute("DELETE FROM conciertos WHERE id = ANY(%s)", (a_eliminar,))
-            eliminados = cur.rowcount
-            print(f"Limpieza: {eliminados} conciertos fuera del área de Buenos Aires eliminados.")
-        else:
-            print("Limpieza: sin conciertos fuera del área de Buenos Aires.")
+            eliminados = 0
+            if a_eliminar:
+                cur.execute("DELETE FROM conciertos WHERE id = ANY(%s)", (a_eliminar,))
+                eliminados = cur.rowcount
+                print(f"Limpieza: {eliminados} conciertos fuera del área de Buenos Aires eliminados.")
+            else:
+                print("Limpieza: sin conciertos fuera del área de Buenos Aires.")
 
-        # Eliminar también los lugares fuera de AMBA que quedaron sin conciertos,
-        # para que el próximo scrape no los reutilice al volver a aparecer el evento.
-        cur.execute(
-            "SELECT u.id, ST_X(u.coordenadas), ST_Y(u.coordenadas) "
-            "FROM ubicaciones u "
-            "WHERE NOT EXISTS (SELECT 1 FROM conciertos c WHERE c.ubicacion = u.id)"
-        )
-        venues_eliminar = []
-        for vid, lng, lat in cur.fetchall():
-            if lng is None or lat is None or not en_amba(float(lng), float(lat)):
-                venues_eliminar.append(vid)
-        if venues_eliminar:
-            cur.execute("DELETE FROM ubicaciones WHERE id = ANY(%s)", (venues_eliminar,))
-            print(f"Limpieza: {cur.rowcount} lugares fuera del área de Buenos Aires eliminados.")
+            # Eliminar también los lugares fuera de AMBA que quedaron sin conciertos,
+            # para que el próximo scrape no los reutilice al volver a aparecer el evento.
+            cur.execute(
+                "SELECT u.id, ST_X(u.coordenadas), ST_Y(u.coordenadas) "
+                "FROM ubicaciones u "
+                "WHERE NOT EXISTS (SELECT 1 FROM conciertos c WHERE c.ubicacion = u.id)"
+            )
+            venues_eliminar = []
+            for vid, lng, lat in cur.fetchall():
+                if lng is None or lat is None or not en_amba(float(lng), float(lat)):
+                    venues_eliminar.append(vid)
+            if venues_eliminar:
+                cur.execute("DELETE FROM ubicaciones WHERE id = ANY(%s)", (venues_eliminar,))
+                print(f"Limpieza: {cur.rowcount} lugares fuera del área de Buenos Aires eliminados.")
         return eliminados
     except Exception as e:
         print(f"Error al eliminar conciertos fuera del área de Buenos Aires: {e}")
@@ -427,22 +493,22 @@ def eliminar_fuera_de_amba(conn):
 
 def eliminar_duplicados(conn):
     try:
-        cur = conn.cursor()
-        cur.execute(
-            """
-            DELETE FROM conciertos a
-            USING conciertos b, ubicaciones ua, ubicaciones ub
-            WHERE b.id < a.id
-              AND ua.id = a.ubicacion
-              AND ub.id = b.ubicacion
-              AND lower(trim(a.artista)) = lower(trim(b.artista))
-              AND a.fecha IS NOT DISTINCT FROM b.fecha
-              AND a.hora IS NOT DISTINCT FROM b.hora
-              AND lower(trim(ua.nombre)) = lower(trim(ub.nombre))
-            """
-        )
-        print(f"Limpieza: {cur.rowcount} duplicados eliminados.")
-        return cur.rowcount
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                DELETE FROM conciertos a
+                USING conciertos b, ubicaciones ua, ubicaciones ub
+                WHERE b.id < a.id
+                  AND ua.id = a.ubicacion
+                  AND ub.id = b.ubicacion
+                  AND lower(trim(a.artista)) = lower(trim(b.artista))
+                  AND a.fecha IS NOT DISTINCT FROM b.fecha
+                  AND a.hora IS NOT DISTINCT FROM b.hora
+                  AND lower(trim(ua.nombre)) = lower(trim(ub.nombre))
+                """
+            )
+            print(f"Limpieza: {cur.rowcount} duplicados eliminados.")
+            return cur.rowcount
     except Exception as e:
         print(f"Error al eliminar duplicados: {e}")
         return 0
@@ -450,31 +516,31 @@ def eliminar_duplicados(conn):
 
 def fusionar_ubicaciones(conn):
     try:
-        cur = conn.cursor()
-        cur.execute("SELECT id, nombre FROM ubicaciones")
-        grupos = {}
-        for uid, nombre in cur.fetchall():
-            clave = (nombre or '').strip().lower()
-            if not clave:
-                continue
-            grupos.setdefault(clave, []).append(uid)
+        with conn.cursor() as cur:
+            cur.execute("SELECT id, nombre FROM ubicaciones")
+            grupos = {}
+            for uid, nombre in cur.fetchall():
+                clave = (nombre or '').strip().lower()
+                if not clave:
+                    continue
+                grupos.setdefault(clave, []).append(uid)
 
-        fusionadas = 0
-        for clave, lista in grupos.items():
-            if len(lista) < 2:
-                continue
-            lista.sort()
-            canonic = lista[0]
-            for dup in lista[1:]:
-                cur.execute(
-                    "UPDATE conciertos SET ubicacion = %s WHERE ubicacion = %s",
-                    (canonic, dup),
-                )
-                cur.execute("DELETE FROM ubicaciones WHERE id = %s", (dup,))
-                fusionadas += 1
-        if fusionadas:
-            print(f"Limpieza: {fusionadas} lugares duplicados fusionados.")
-        return fusionadas
+            fusionadas = 0
+            for clave, lista in grupos.items():
+                if len(lista) < 2:
+                    continue
+                lista.sort()
+                canonic = lista[0]
+                for dup in lista[1:]:
+                    cur.execute(
+                        "UPDATE conciertos SET ubicacion = %s WHERE ubicacion = %s",
+                        (canonic, dup),
+                    )
+                    cur.execute("DELETE FROM ubicaciones WHERE id = %s", (dup,))
+                    fusionadas += 1
+            if fusionadas:
+                print(f"Limpieza: {fusionadas} lugares duplicados fusionados.")
+            return fusionadas
     except Exception as e:
         print(f"Error al fusionar lugares duplicados: {e}")
         return 0
@@ -494,39 +560,44 @@ def eliminar_conciertos_ausentes(conn, claves_vigentes, claves_en_sitio=None):
             if len(partes) == 4:
                 artistas_en_sitio.add(partes[0])
                 lugares_en_sitio.add(partes[3])
-        cur = conn.cursor()
-        cur.execute(
-            "SELECT c.id, c.artista, c.fecha, c.hora, u.nombre "
-            "FROM conciertos c JOIN ubicaciones u ON u.id = c.ubicacion"
-        )
-        a_eliminar = []
-        for cid, artista, fecha, hora, lugar in cur.fetchall():
-            clave_canonica = _clave_concierto(artista, fecha, hora, lugar)
-            if clave_canonica in claves_vigentes:
-                continue
-            # Si no aparece con la clave normalizada, verificar que no esté entre los
-            # ítems vistos en el sitio durante esta corrida (datos crudos).
-            clave_cruda_bd = _clave_concierto_crudo(
-                artista,
-                fecha.strftime('%d/%m/%y') if fecha else '',
-                hora.strftime('%H:%M') if hora else '',
-                lugar,
+        cur = None
+        try:
+            cur = conn.cursor()
+            cur.execute(
+                "SELECT c.id, c.artista, c.fecha, c.hora, u.nombre "
+                "FROM conciertos c JOIN ubicaciones u ON u.id = c.ubicacion"
             )
-            if clave_cruda_bd in claves_en_sitio:
-                continue
-            # Última red: si el (artista, lugar) se vio en el sitio, el concierto puede
-            # seguir existiendo con fecha/hora que no pudieron normalizarse.
-            if (artista or '').strip().lower() in artistas_en_sitio and \
-               (lugar or '').strip().lower() in lugares_en_sitio:
-                continue
-            a_eliminar.append(cid)
-        if not a_eliminar:
-            print("Sync: todos los conciertos siguen existiendo en agendade.")
-            return 0
-        cur.execute("DELETE FROM conciertos WHERE id = ANY(%s)", (a_eliminar,))
-        eliminados = cur.rowcount
-        print(f"Sync: {eliminados} conciertos ya no existen en agendade — eliminados.")
-        return eliminados
+            a_eliminar = []
+            for cid, artista, fecha, hora, lugar in cur.fetchall():
+                clave_canonica = _clave_concierto(artista, fecha, hora, lugar)
+                if clave_canonica in claves_vigentes:
+                    continue
+                # Si no aparece con la clave normalizada, verificar que no esté entre los
+                # ítems vistos en el sitio durante esta corrida (datos crudos).
+                clave_cruda_bd = _clave_concierto_crudo(
+                    artista,
+                    fecha.strftime('%d/%m/%y') if fecha else '',
+                    hora.strftime('%H:%M') if hora else '',
+                    lugar,
+                )
+                if clave_cruda_bd in claves_en_sitio:
+                    continue
+                # Última red: si el (artista, lugar) se vio en el sitio, el concierto puede
+                # seguir existiendo con fecha/hora que no pudieron normalizarse.
+                if (artista or '').strip().lower() in artistas_en_sitio and \
+                   (lugar or '').strip().lower() in lugares_en_sitio:
+                    continue
+                a_eliminar.append(cid)
+            if not a_eliminar:
+                print("Sync: todos los conciertos siguen existiendo en agendade.")
+                return 0
+            cur.execute("DELETE FROM conciertos WHERE id = ANY(%s)", (a_eliminar,))
+            eliminados = cur.rowcount
+            print(f"Sync: {eliminados} conciertos ya no existen en agendade — eliminados.")
+            return eliminados
+        finally:
+            if cur is not None:
+                cur.close()
     except Exception as e:
         print(f"Error al eliminar conciertos ausentes: {e}")
         return 0
