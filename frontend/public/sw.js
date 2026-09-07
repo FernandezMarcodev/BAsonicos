@@ -2,7 +2,7 @@
 
 const VERSION = 'bassonicos-v1'
 const CACHE_APP = `${VERSION}-app`
-const RECURSOS_SHELL = ['/', '/index.html', '/manifest.webmanifest', '/logo.svg', '/icon-192.png', '/icon-512.png']
+const RECURSOS_SHELL = ['/', '/index.html', '/manifest.json', '/logo.svg', '/icon-192.png', '/icon-512.png']
 
 const sinCache = async () => {
   const llaves = await caches.keys()
