@@ -1,18 +1,18 @@
-# Blueprint de Render: backend Go + scraper Python + frontend estático.
+# Blueprint de Render: backend API (Go + scraper Python embebido) + frontend estático.
 # Aplicar desde el dashboard con "New + Blueprint" apuntando a este repositorio.
-# Base de datos: Supabase (PostgreSQL + PostGIS). El schema se crea solo al
-# arrancar el backend (db.go es idempotente), así que Supabase arranca vacía.
+# Base de datos: Neon (PostgreSQL + PostGIS). El schema se crea solo al arrancar
+# el backend (db.go es idempotente), así que la base arranca vacía.
 services:
-  # Backend API (Go). Render free no incluye Python, así que el scraper por
-  # subproceso queda desactivado (SCRAPER_INTERVALO_MINUTOS=0): el scraping lo
-  # maneja el servicio bassonicos-scraper (Python) más abajo.
+  # Backend API. La imagen Go nativa de Render no trae Python, así que este
+  # servicio se buildea desde un Dockerfile (backend/Dockerfile) que empaqueta el
+  # binario Go + Python 3 + el scraper (scraper/). El scraper NO se expone por
+  # URL: lo dispara el backend cada 24 h (SCRAPER_INTERVALO_MINUTOS=1440).
   - type: web
     name: bassonicos-backend
-    runtime: go
+    runtime: docker
     plan: free
-    rootDir: backend
-    buildCommand: go build -o server ./cmd/server
-    startCommand: ./server
+    dockerfilePath: backend/Dockerfile
+    dockerContext: .
     healthCheckPath: /
     autoDeploy: true
     envVars:
@@ -33,12 +33,10 @@ services:
       - key: DB_SSLMODE
         value: require
       - key: SCRAPER_INTERVALO_MINUTOS
-        value: 0
+        value: 1440
       - key: KEEP_ALIVE_URL
         sync: false
       - key: JWT_SECRET
-        sync: false
-      - key: ADMIN_TOKEN
         sync: false
       - key: CORS_ORIGINS
         sync: false
@@ -50,37 +48,6 @@ services:
         sync: false
       - key: VAPID_SUBJECT
         value: mailto:soporte@bassonicos.com
-      - key: PYTHON_CMD
-        sync: false
-
-  # Scraper diario (Python free). Expone un endpoint HTTP mínimo que un
-  # "despertador" externo (UptimeRobot/cron-job.org) pinguea cada ~10 min para
-  # que Render no duerma la instancia. Corrida inmediata + cada 24 h a
-  # SCRAPER_HORA_UTC (default 08:00 UTC = 05:00 ART). Escribe directo en Supabase.
-  - type: web
-    name: bassonicos-scraper
-    runtime: python
-    plan: free
-    rootDir: scraper
-    buildCommand: pip install -r requirements.txt
-    startCommand: python server.py
-    healthCheckPath: /
-    autoDeploy: true
-    envVars:
-      - key: DB_HOST
-        sync: false
-      - key: DB_PORT
-        value: 5432
-      - key: DB_NAME
-        sync: false
-      - key: DB_USER
-        sync: false
-      - key: DB_PASSWORD
-        sync: false
-      - key: DB_SSLMODE
-        value: require
-      - key: SCRAPER_HORA_UTC
-        value: 08:00
 
   # Frontend estático (React/Vite). VITE_API_URL debe apuntar al URL público
   # del backend (se resuelve en build time): https://<backend>.onrender.com
@@ -88,9 +55,16 @@ services:
     name: bassonicos-frontend
     runtime: static
     rootDir: frontend
-    buildCommand: npm install && npm run build
+    buildCommand: npm ci && npm run build
     staticPublishPath: ./dist
     autoDeploy: true
+    # SPA fallback: cualquier ruta que no matchee un archivo real (p. ej. /ayuda,
+    # /login) se reescribe a /index.html para que el router del cliente la maneje.
+    # Render no aplica la regla si el archivo existe, así los assets no se tocan.
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
     envVars:
       - key: VITE_API_URL
         sync: false

@@ -25,10 +25,6 @@ type Config struct {
 
 	JWTSecret string
 
-	// AdminToken protege el endpoint manual de scrapeo (/scrape_conciertos_agendade).
-	// Si está vacío, ese endpoint queda fuera de servicio (el loop automático sigue).
-	AdminToken string
-
 	// CORSOrigins lista separada por comas de orígenes permitidos para CORS.
 	// Vacío en dev permite localhost; en producción debe configurarse.
 	CORSOrigins []string
@@ -71,10 +67,10 @@ func parseCSV(s string) []string {
 func Load() (Config, error) {
 	_ = godotenv.Load()
 
-	intervalo, err := strconv.Atoi(getenv("SCRAPER_INTERVALO_MINUTOS", "2880"))
+	intervalo, err := strconv.Atoi(getenv("SCRAPER_INTERVALO_MINUTOS", "1440"))
 	if err != nil {
-		fmt.Println("AVISO: SCRAPER_INTERVALO_MINUTOS inválido, se usa 2880.")
-		intervalo = 2880
+		fmt.Println("AVISO: SCRAPER_INTERVALO_MINUTOS inválido, se usa 1440.")
+		intervalo = 1440
 	}
 
 	cfg := Config{
@@ -106,7 +102,6 @@ func Load() (Config, error) {
 		fmt.Println("AVISO: JWT_SECRET no definido, se usa un secreto de desarrollo (definirlo para producción).")
 	}
 
-	cfg.AdminToken = getenv("ADMIN_TOKEN", "")
 	cfg.CORSOrigins = parseCSV(getenv("CORS_ORIGINS", ""))
 
 	cfg.VAPIDPublicKey = getenv("VAPID_PUBLIC_KEY", "")

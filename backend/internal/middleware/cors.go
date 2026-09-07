@@ -26,7 +26,7 @@ func CORS(origenos []string) gin.HandlerFunc {
 			return permitidos[origin]
 		},
 		AllowMethods:  []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
-		AllowHeaders:  []string{"Origin", "Content-Type", "Authorization", "X-Admin-Token"},
+		AllowHeaders:  []string{"Origin", "Content-Type", "Authorization"},
 		ExposeHeaders: []string{"Content-Length"},
 		MaxAge:        12 * time.Hour,
 	})

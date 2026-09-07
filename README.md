@@ -14,10 +14,10 @@ de JavaScript, y **registro e inicio de sesión** nuevos. Los scrapers siguen si
 | Capa       | Tecnología                                                        |
 | ---------- | ----------------------------------------------------------------- |
 | Backend    | Go 1.27, Gin, pgx (pgxpool), JWT (golang-jwt/v5), bcrypt          |
-| Base       | PostgreSQL + PostGIS 16 (Docker local / **Supabase** en producción) |
+| Base       | PostgreSQL + PostGIS 16 (Docker local / **Neon** o **Supabase** en producción) |
 | Scraper    | Python (requests + BeautifulSoup) + Nominatim                     |
 | Frontend   | React 18 + Vite 7 + TypeScript, Tailwind CSS v4, Leaflet, react-router |
-| Deploy     | Render: web service Go + web service Python (scraper) + static frontend |
+| Deploy     | Render (backend Go con scraper Python embebido en la imagen Docker + frontend estático) + PostgreSQL/PostGIS externa (Neon o Supabase) |
 
 ## Estructura
 
@@ -48,8 +48,9 @@ python -m venv .venv
 > El backend ejecuta el scraper automáticamente al iniciar y luego a intervalos
 > (`SCRAPER_INTERVALO_MINUTOS`). También se puede correr manualmente:
 > `python scraper.py scrape` o `python scraper.py mantenimiento`. En producción
-> (Render) el scrapeo lo maneja un servicio Python aparte (`scraper/server.py`),
-> no el backend Go.
+> (Render) el scraper va **embebido en la imagen Docker del backend** y lo dispara
+> el propio backend cada 24 h (`SCRAPER_INTERVALO_MINUTOS=1440`); no hay servicio
+> Python aparte ni endpoint público de scrapeo.
 
 ### 3. Backend (Go)
 
@@ -77,7 +78,6 @@ npm run dev             # http://localhost:5173
 | ------ | -------------------------------------- | ----------------------------------------------- |
 | GET    | `/`                                    | Health check                                    |
 | GET    | `/conciertos`                          | Lista de conciertos                             |
-| GET    | `/scrape_conciertos_agendade`          | Dispara el scraper manualmente (función pública)|
 | POST   | `/registro`                            | `{email, nombre, password}` → `{token, usuario}`|
 | POST   | `/login`                               | `{email, password}` → `{token, usuario}`        |
 | GET    | `/me`                                  | Perfil del usuario (requiere `Bearer <token>`)  |
@@ -115,10 +115,9 @@ npm run dev             # http://localhost:5173
 | `DB_NAME` / `DB_USER` / `DB_PASSWORD` | Credenciales de la base                |
 | `DB_SSLMODE`              | `require` en producción (Supabase/Neon/Render)      |
 | `PORT` / `HOST`           | Puerto y bind del servidor                          |
-| `SCRAPER_INTERVALO_MINUTOS` | Intervalo del scrape automático (0 en prod: lo maneja el servicio Python) |
+| `SCRAPER_INTERVALO_MINUTOS` | Intervalo del scrape automático (1440 en prod: cada 24 h) |
 | `KEEP_ALIVE_URL`          | URL propia para keep-alive (Render)                 |
 | `JWT_SECRET`              | Secreto para firmar tokens (¡cambiar en producción!)|
-| `ADMIN_TOKEN`             | Token para el endpoint manual `/scrape_conciertos_agendade` |
 | `CORS_ORIGINS`            | Orígenes permitidos separados por coma (dejar vacío en dev) |
 | `SITIO_WEB`               | URL pública del frontend (enlaces en push e ics)    |
 | `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` / `VAPID_SUBJECT` | Push web (generar con `go run ./cmd/generar_vapid`) |
@@ -132,59 +131,94 @@ npm run dev             # http://localhost:5173
 | `VITE_API_URL` | URL base de la API (default local)   |
 | `VITE_OSM_URL` | Plantilla de tiles OSM (default `https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png`) |
 
-## Deploy en Render + Supabase
+## Deploy en Render
 
-La app en producción se compone de: **Supabase** (base PostgreSQL + PostGIS) y **3
-servicios en Render** (backend Go, scraper Python, frontend estático). El blueprint
-está en `render.yaml`; se aplica desde el dashboard de Render con **Blueprint**
-seleccionando la rama `deploy/render-supabase` (cada push a esa rama re-despliega).
+En producción la app se compone de **2 servicios en Render** (backend + frontend
+estático) y una **base PostgreSQL con PostGIS** externa y gratuita (recomendada:
+**Neon**). El scraper va **embebido en la imagen Docker del backend** y lo dispara
+el propio backend cada 24 h; no hay servicio Python aparte ni endpoint público de
+scrapeo. Podés aplicar el blueprint de `render.yaml` (botón **New + Blueprint**) o
+crear cada servicio a mano con los datos de abajo. El backend crea las tablas y la
+extensión PostGIS solas al arrancar (`db.go` es idempotente), así que la base
+arranca vacía.
 
-### 1. Supabase
+### 1. Base de datos (PostgreSQL + PostGIS)
 
-1. Crear un proyecto en [supabase.com](https://supabase.com) (gratis).
-2. En **SQL Editor** habilitar PostGIS (el backend lo reinstenta, pero mejor ya):
-   ```sql
-   create extension if not exists postgis;
+**Neon** ([neon.tech](https://neon.tech)) — plan Free "para siempre" ($0/mes, sin
+fecha de vencimiento): 0.5 GB de storage, 100 CU-h/mes, scale-to-zero a los 5 min de
+inactividad (se reactiva solo). Es PostgreSQL real y soporta **PostGIS**; el
+backend la habilita con `CREATE EXTENSION IF NOT EXISTS postgis` al arrancar.
+
+1. Crear un proyecto en [neon.tech](https://neon.tech) (no pide tarjeta).
+2. **No hace falta crear tablas ni habilitar PostGIS a mano.**
+3. En **Connect** copiar el connection string **directo**:
+   ```text
+   postgresql://USER:PASSWORD@ep-<ref>.REGION.aws.neon.tech/dbname?sslmode=require
    ```
-3. **No hace falta crear tablas**: el backend las crea al arrancar (`db.go` es
-   idempotente: `CREATE TABLE IF NOT EXISTS` + índices).
-4. En **Connect** copiar el DSN. Usá el **modo directo**
-   (`db.<ref>.supabase.co:5432`). Si Render no alcanza IPv6, usar el pooler en
-   modo sesión (`aws-<region>.pooler.supabase.com:5432`, usuario
-   `postgres.<ref>`).
+   y partir las credenciales: `DB_HOST` = `ep-<ref>.REGION.aws.neon.tech`,
+   `DB_PORT` = `5432`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`, `DB_SSLMODE` = `require`.
 
-### 2. Render (Blueprint)
+Otras bases externas gratuitas compatibles (PostgreSQL + PostGIS): **Supabase**
+(pausa proyectos inactivos) o **Aiven** (una sola base free). En Supabase, usar el
+DSN en **modo directo** (`db.<ref>.supabase.co:5432`) o el pooler por sesión si
+Render no alcanza IPv6.
 
-1. En el dashboard: **New + Blueprint** → repositorio BAsonicos → branch
-   `deploy/render-supabase`.
-2. Se crean 3 servicios:
-   - `bassonicos-backend` (Go, free)
-   - `bassonicos-scraper` (Python, free)
-   - `bassonicos-frontend` (static, free)
-3. En cada servicio llenar los **secretos** (`sync: false`):
-   - **backend**: `DB_HOST`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`
-     (de Supabase), `JWT_SECRET`, `ADMIN_TOKEN`, `CORS_ORIGINS` y `SITIO_WEB`
-     (URL del frontend, p. ej. `https://bassonicos-frontend.onrender.com`),
-     `KEEP_ALIVE_URL` (URL pública del backend, `https://<backend>.onrender.com`),
-     `VAPID_*`.
-   - **scraper**: `DB_HOST`, `DB_NAME`, `DB_USER`, `DB_PASSWORD` (mismos de Supabase).
-   - **frontend**: `VITE_API_URL` = URL pública del backend.
+### 2. Backend (Web Service · Docker)
 
-### 3. Despertador del scraper (plan free)
+La imagen Go nativa de Render **no trae Python**, así que el backend se buildea
+desde `backend/Dockerfile` (etapa de build Go + etapa Debian con Python 3 y el
+scraper instalado en `/opt/scraper`). Los tres caminos quedan fijos en la imagen:
+`PYTHON_CMD=/opt/venv/bin/python`, `SCRAPER_PATH=/opt/scraper/scraper.py`,
+`SCRAPER_RUN_DIR=/opt/scraper`.
+
+- **Type**: Web Service.
+- **Source**: repositorio → **Dockerfile** (auto-detectado). Si se crea a mano,
+  apuntar el **Dockerfile** a `backend/Dockerfile` y el **contexto de build** a la
+  raíz del repo (la imagen necesita `backend/` y `scraper/`).
+- **Root Directory**: (raíz del repo, no `backend`)
+- **Health Check Path**: `/`
+- **Env vars** (además de `PORT=10000` y `HOST=0.0.0.0`, ya en la imagen):
+  `DB_HOST`, `DB_PORT=5432`, `DB_NAME`, `DB_USER`, `DB_PASSWORD` (de Neon),
+  `DB_SSLMODE=require`, `JWT_SECRET`, `CORS_ORIGINS`,
+  `SITIO_WEB=https://<frontend>.onrender.com`,
+  `KEEP_ALIVE_URL=https://<backend>.onrender.com`,
+  `SCRAPER_INTERVALO_MINUTOS=1440` y `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`,
+  `VAPID_SUBJECT`.
+- Al arrancar corre el **mantenimiento** (pasadas + duplicados) y después el
+  **scrape** cada **24 h** (`SCRAPER_INTERVALO_MINUTOS=1440`), escribiendo directo
+  en Neon.
+
+### 3. Frontend (Static Site)
+
+- **Type**: Static Site (es un build estático, no un servidor).
+- **Root Directory**: `frontend`
+- **Build Command**: `npm ci && npm run build`
+- **Publish Directory**: `dist`
+- **Env var (build-time)**: `VITE_API_URL=https://<backend>.onrender.com`
+- **SPA fallback** (Settings → Redirects/Rewrites → New Rule): `type` **rewrite**,
+  `source` `/*`, `destination` `/index.html`. El blueprint `render.yaml` ya lo trae.
+
+### 4. Despertador del backend (plan free)
 
 El plan free de Render duerme la instancia a los ~15 min sin tráfico. Para que el
 loop de 24 h del scraper se dispare, un servicio externo gratis (UptimeRobot,
-cron-job.org) debe **pinguear el URL del scraper cada ~10 min**. En UptimeRobot:
-tipo **HTTP(S)** → `https://<scraper>.onrender.com/` → intervalo 5-10 min.
+cron-job.org) debe **pinguear el health check del backend cada ~10 min**: tipo
+**HTTP(S)** → `https://<backend>.onrender.com/` → intervalo 5-10 min. El endpoint
+`/` solo responde 200; no expone nada.
 
-> El scraper corre **inmediatamente al desplegar** (primera corrida) y luego cada
-> 24 h a las **08:00 UTC** (05:00 ART). La hora se ajusta con `SCRAPER_HORA_UTC`.
-
-### 4. Verificación
+### 5. Verificación
 
 ```bash
 curl https://<backend>.onrender.com/                       # health check
 curl https://<backend>.onrender.com/conciertos            # array (vacío al inicio)
-curl -X GET -H "X-Admin-Token: <ADMIN_TOKEN>" \           # llenar la base
-     https://<backend>.onrender.com/scrape_conciertos_agendade
+curl https://<frontend>.onrender.com/                     # SPA
 ```
+
+La base se llena sola en el primer arranque (mantenimiento) y cada 24 h (scrape).
+En los registros del backend se ve `Scrapeo completado` cuando termina bien.
+
+### 6. Blueprint (alternativa)
+
+Botón **New + Blueprint** → repositorio BAsonicos. Se crean los 2 servicios
+(`bassonicos-backend`, `bassonicos-frontend`) con la config de `render.yaml`; los
+**secretos** se llenan en el dashboard de cada servicio (`sync: false`).

@@ -29,7 +29,7 @@ flowchart TB
 
     subgraph Servidor
         API["Backend · Go 1.27 (Gin)\nacceso JWT protegido + endpoints públicos\nrespuestas comprimidas con gzip\npool pgx 2–8 conexiones"]
-        SCR["Scraper · Python\nrequests + BeautifulSoup\n(proceso externo lanzado por el backend)"]
+        SCR["Scraper · Python\nrequests + BeautifulSoup\n(subproceso lanzado por el backend,\nembebido en la imagen Docker)"]
     end
 
     subgraph Datos
@@ -54,7 +54,6 @@ flowchart TB
         H3["Favoritos (GET/POST/DELETE)"]
         H4["Seguidos (GET/POST/DELETE)"]
         H5["Novedades (GET/leida/leer_todas)"]
-        H6["Scrape (GET /scrape_conciertos_agendade)"]
     end
 
     subgraph Servicios
@@ -67,13 +66,12 @@ flowchart TB
     DB[("PostgreSQL + PostGIS")]
     PY["scraper.py (Python)"]
 
-    R --> H1 & H2 & H3 & H4 & H5 & H6
+    R --> H1 & H2 & H3 & H4 & H5
     H1 --> S1
     H2 --> S2
     H3 --> S2
     H4 --> S3
     H5 --> S3
-    H6 --> S4
     S1 --> DB
     S2 --> DB
     S3 --> DB
@@ -96,7 +94,7 @@ sequenceDiagram
     S->>PY: exec scraper.py mantenimiento
     PY-->>S: resultado OK/fallo
     main->>S: RunSchedulers()
-    Note over S: loopScraper (cada SCRAPER_INTERVALO_MINUTOS, default 2880)\nloopMantenimiento (cada 2 h)\nloopKeepAlive (si KEEP_ALIVE_URL)
+    Note over S: loopScraper (cada SCRAPER_INTERVALO_MINUTOS, default 1440)\nloopMantenimiento (cada 2 h)\nloopKeepAlive (si KEEP_ALIVE_URL)
     loop Cada intervalo
         S->>PY: exec scraper.py scrape
         PY-->>S: filas nuevas
@@ -111,10 +109,17 @@ sequenceDiagram
 
 ## 5. Despliegue (Render)
 
-- **Backend**: servicio web Go (`render.yaml`, servicio *bassonicos-backend*),
-  `PORT=10000`, base externa Postgres con `DB_SSLMODE=require`, health check en `/`.
+- **Backend**: servicio web con `runtime: docker` (`render.yaml`, servicio
+  *bassonicos-backend*). El `backend/Dockerfile` empaqueta el binario Go + Python 3
+  + el scraper (`PYTHON_CMD`, `SCRAPER_PATH` y `SCRAPER_RUN_DIR` fijos en la
+  imagen). El scraper corre como subproceso del backend cada 24 h
+  (`SCRAPER_INTERVALO_MINUTOS=1440`) y **no se expone por URL**. `PORT=10000`,
+  base externa Postgres con `DB_SSLMODE=require`, health check en `/`.
 - **Frontend**: servicio estático (*bassonicos-frontend*) que sirve `./dist`
   (build de `npm run build`) y apunta a `VITE_API_URL`.
+- **Vigilancia**: el plan free duerme la instancia ~15 min sin tráfico; un
+  UptimeRobot/cron-job.org pinguea el health check del backend (`/`) cada ~10 min
+  para que el loop de 24 h del scraper se dispare.
 
 ## 6. Decisiones de estructura recientes
 

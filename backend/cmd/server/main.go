@@ -59,11 +59,6 @@ func main() {
 	r.GET("/conciertos.ics", api.CalendarioConciertos)
 	r.GET("/clave_vapid", api.ClaveVapid)
 
-	// Endpoint de scrapeo manual: protegido con token de administración y rate-limit.
-	// Sin ADMIN_TOKEN configurado el middleware responde 403 (el loop automático
-	// sigue el scrapeo programado).
-	r.GET("/scrape_conciertos_agendade", middleware.Admin(cfg.AdminToken), middleware.RateLimit(3, time.Minute), api.ScrapeConciertos)
-
 	r.POST("/registro", middleware.RateLimit(10, time.Minute), api.Registro)
 	r.POST("/login", middleware.RateLimit(10, time.Minute), api.Login)
 

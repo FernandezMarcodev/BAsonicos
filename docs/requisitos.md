@@ -16,7 +16,7 @@ conciertos del Gran Buenos Aires (ex "Concierto Finder").
 - **Frontend**: SPA en React 18 + TypeScript (Vite 7, Tailwind CSS v4, Leaflet).
 - **Backend**: API REST en Go 1.27 (Gin), autenticación JWT, hashing bcrypt, compresión gzip.
 - **Datos**: PostgreSQL 16 + PostGIS, scraper Python (requests + BeautifulSoup).
-- **Deploy**: Render (servicio web Go + estático).
+- **Deploy**: Render (backend Go en imagen Docker con el scraper Python embebido + frontend estático).
 - Fuera de alcance: pagos online, multiusuarios avanzados, apps nativas.
 
 ### 1.3 Definiciones y acrónimos
@@ -35,7 +35,7 @@ conciertos del Gran Buenos Aires (ex "Concierto Finder").
 
 ### 2.1 Perspectiva
 Sistema web cliente-servidor. El frontend consume la API por JSON; el backend mantiene el
-catálogo con un scraper programado (default 2880 min) y genera novedades post-scrape.
+catálogo con un scraper programado (default 1440 min) y genera novedades post-scrape.
 Reemplaza un backend histórico Flask.
 
 ### 2.2 Funciones del producto
@@ -67,8 +67,7 @@ dejar de seguir artistas, recibir y gestionar novedades, modo oscuro y estilos d
 | RF-12 | Modo oscuro y estilos de mapa (auto/claro/oscuro). | La preferencia persiste (`localStorage`). |
 | RF-13 | Guía de uso en `/ayuda` (misma info que COMO_USAR.md). | Los pasos de la guía coinciden con el comportamiento real. |
 | RF-14 | Health check en `/`. | Responde `200 OK` y un texto HTML simple. |
-| RF-15 | Scrape manual vía `GET /scrape_conciertos_agendade`. | Dispara el scraper y devuelve el resultado (exitoso/filas). |
-| RF-16 | Actualización automática de datos (schedulers). | `loopScraper`, `loopMantenimiento` y `loopKeepAlive` corren en goroutines. |
+| RF-15 | Actualización automática de datos (schedulers). | `loopScraper` (cada 1440 min), `loopMantenimiento` (cada 2 h) y `loopKeepAlive` corren en goroutines; el scraper va embebido en la imagen Docker y no se expone por URL. |
 
 ---
 
@@ -148,4 +147,4 @@ dejar de seguir artistas, recibir y gestionar novedades, modo oscuro y estilos d
 - RF-01..05 → `Inicio.tsx`, `Mapa.tsx`, `Filtros.tsx`, `TarjetaConcierto.tsx`.
 - RF-06..08 → `Registro.tsx`, `Login.tsx`, `AuthContext.tsx`, `handlers/auth.go`.
 - RF-09..11 → `FavoritosContext.tsx`, `SeguidosContext.tsx`, `Encabezado.tsx`, `handlers/favoritos.go`, `handlers/seguidos.go`.
-- RF-12..16 → `TemaContext.tsx`, `Ayuda.tsx`, `handlers/scrape.go`, `services/scraper_service.go`.
+- RF-12..15 → `TemaContext.tsx`, `Ayuda.tsx`, `services/scraper_service.go`.
