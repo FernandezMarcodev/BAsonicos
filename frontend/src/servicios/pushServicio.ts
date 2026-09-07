@@ -23,12 +23,11 @@ function base64url(buffer: ArrayBuffer): string {
   return btoa(binaria).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
 }
 
+// Devuelve si el push está disponible y la clave VAPID. Lanza si no se puede
+// contactar el servidor (red/CORS) para distinguir "no configurado" de
+// "servidor inaccesible" en la UI.
 export async function obtenerInfoVapid(): Promise<InfoVapid> {
-  try {
-    return await peticion<InfoVapid>('/clave_vapid')
-  } catch {
-    return { activo: false, clave_publica: '' }
-  }
+  return peticion<InfoVapid>('/clave_vapid')
 }
 
 export function pushSoportado(): boolean {

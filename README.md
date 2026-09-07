@@ -188,6 +188,17 @@ scraper instalado en `/opt/scraper`). Los tres caminos quedan fijos en la imagen
   **scrape** cada **24 h** (`SCRAPER_INTERVALO_MINUTOS=1440`), escribiendo directo
   en Neon.
 
+> **Notificaciones push solo si VAPID está cargado en producción.** Las claves
+> `VAPID_PUBLIC_KEY`/`VAPID_PRIVATE_KEY` son secretos y **no** vienen en el
+> blueprint: hay que cargarlas en el dashboard de Render (env vars del servicio
+> backend). Sin ellas, `GET /clave_vapid` responde `{"activo":false,...}` y la app
+> muestra "Las notificaciones no están configuradas en el servidor" (antes
+> "no disponibles en este navegador", un mensaje engañoso). Verificar con
+> `curl https://<backend>.onrender.com/clave_vapid` (debe decir `"activo":true`).
+> Además, `CORS_ORIGINS` debe incluir la URL exacta del frontend
+> (p. ej. `https://<frontend>.onrender.com`), o el navegador bloquea las
+> peticiones a `/clave_vapid` y `/suscripcion_push`.
+
 ### 3. Frontend (Static Site)
 
 - **Type**: Static Site (es un build estático, no un servidor).
@@ -211,6 +222,7 @@ cron-job.org) debe **pinguear el health check del backend cada ~10 min**: tipo
 ```bash
 curl https://<backend>.onrender.com/                       # health check
 curl https://<backend>.onrender.com/conciertos            # array (vacío al inicio)
+curl https://<backend>.onrender.com/clave_vapid           # {"activo":true,...} = push ok
 curl https://<frontend>.onrender.com/                     # SPA
 ```
 

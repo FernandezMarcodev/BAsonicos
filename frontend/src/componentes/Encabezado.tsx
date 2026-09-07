@@ -7,6 +7,7 @@ import { useSeguidos } from '../contexto/SeguidosContext'
 import { useTema } from '../contexto/TemaContext'
 import { useToast } from '../contexto/ToastContext'
 import * as pushServicio from '../servicios/pushServicio'
+import type { InfoVapid } from '../servicios/pushServicio'
 import { artistaDuplicadoEnTitulo } from '../utilidades/texto'
 import Boton from './Boton'
 import EnlaceBoton from './EnlaceBoton'
@@ -22,7 +23,7 @@ function fechaCorta(fecha: string | null | undefined): string {
 function ActivadorPush() {
   const { token } = useAuth()
   const { mostrarToast } = useToast()
-  const [disponible, setDisponible] = useState<'cargando' | 'no' | 'si'>('cargando')
+  const [disponible, setDisponible] = useState<'cargando' | 'navegador' | 'servidor' | 'red' | 'si'>('cargando')
   const [claveVapid, setClaveVapid] = useState('')
   const [activa, setActiva] = useState(false)
   const [trabajando, setTrabajando] = useState(false)
@@ -32,12 +33,18 @@ function ActivadorPush() {
 
     async function inicializar() {
       if (!pushServicio.pushSoportado()) {
-        if (vivo) setDisponible('no')
+        if (vivo) setDisponible('navegador')
         return
       }
-      const info = await pushServicio.obtenerInfoVapid()
+      let info: InfoVapid
+      try {
+        info = await pushServicio.obtenerInfoVapid()
+      } catch {
+        if (vivo) setDisponible('red')
+        return
+      }
       if (!info.activo || !info.clave_publica) {
-        if (vivo) setDisponible('no')
+        if (vivo) setDisponible('servidor')
         return
       }
       const suscripcion = await pushServicio.obtenerSuscripcionActiva()
@@ -48,7 +55,7 @@ function ActivadorPush() {
     }
 
     void inicializar().catch(() => {
-      if (vivo) setDisponible('no')
+      if (vivo) setDisponible('servidor')
     })
     return () => {
       vivo = false
@@ -96,12 +103,18 @@ function ActivadorPush() {
     )
   }
 
-  if (disponible === 'no') {
+  if (disponible === 'servidor' || disponible === 'red' || disponible === 'navegador') {
+    const texto =
+      disponible === 'navegador'
+        ? 'Este navegador no admite notificaciones push'
+        : disponible === 'red'
+          ? 'No se pudo verificar las notificaciones (servidor inaccesible)'
+          : 'Las notificaciones no están configuradas en el servidor'
     return (
       <div className="border-t border-black/5 px-4 py-3 dark:border-white/10">
         <p className="flex items-center gap-2 text-xs text-ink-muted dark:text-[#c6c5cf]">
           <FiBellOff className="shrink-0" />
-          Notificaciones no disponibles en este navegador
+          {texto}
         </p>
       </div>
     )
