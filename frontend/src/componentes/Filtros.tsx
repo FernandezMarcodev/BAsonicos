@@ -110,7 +110,7 @@ function SelectorArtista({
         className={`${estilosControl} pl-9`}
       />
       {abierto && (
-        <div className="absolute left-0 right-0 top-full z-20 mt-2 overflow-hidden rounded-2xl border border-black/10 bg-white shadow-elevation-3 dark:border-white/10 dark:bg-[#2b2e33]">
+        <div className="absolute left-0 right-0 top-full z-40 mt-2 overflow-hidden rounded-2xl border border-black/10 bg-white shadow-elevation-3 dark:border-white/10 dark:bg-[#2b2e33]">
           {sugerencias.length === 0 ? (
             <p className="px-4 py-3 text-sm text-ink-muted dark:text-[#c6c5cf]">Sin coincidencias</p>
           ) : (
