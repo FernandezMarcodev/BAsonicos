@@ -157,7 +157,7 @@ function CampanaNovedades() {
     setAbierta(false)
     // El concierto viaja por route state: Inicio lo lee al montar, evitando que
     // se pierda si esta página todavía no estaba montada.
-    navegar('/', { state: { conciertoEnfocar: notificacion.concierto } })
+    navegar('/app', { state: { conciertoEnfocar: notificacion.concierto } })
   }
 
   return (
@@ -277,7 +277,7 @@ export default function Encabezado() {
 
   function cerrar() {
     cerrarSesion()
-    navegar('/')
+    navegar('/app')
     mostrarToast('Sesión cerrada', 'info')
   }
 
@@ -285,7 +285,7 @@ export default function Encabezado() {
     <header className="sticky top-0 z-50 border-b border-white/10 bg-[#0f1115]">
       <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-3">
         <nav aria-label="Principal" className="flex items-center gap-2.5">
-          <a href="#/" className="flex items-center gap-2.5" aria-label="Ir al inicio">
+          <a href="#/app" className="flex items-center gap-2.5" aria-label="Ir a la app">
             <img
               src="/logo.svg"
               alt="BAsónicos"
@@ -302,7 +302,7 @@ export default function Encabezado() {
             <>
               {cantidadFavoritos > 0 && (
                 <button
-                  onClick={() => navegar('/', { state: { vistaConciertos: 'favoritos' } })}
+                  onClick={() => navegar('/app', { state: { vistaConciertos: 'favoritos' } })}
                   title="Mis favoritos"
                   aria-label={`Mis favoritos (${cantidadFavoritos})`}
                   className="relative inline-flex h-10 items-center gap-1.5 rounded-full bg-white/10 px-3 text-sm font-medium text-[#e3e2e9] transition-colors hover:bg-white/15"

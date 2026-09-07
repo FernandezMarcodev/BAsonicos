@@ -26,7 +26,7 @@ export default function Login() {
   const [enviando, setEnviando] = useState(false)
 
   if (usuario) {
-    return <Navigate to="/" replace />
+    return <Navigate to="/app" replace />
   }
 
   function validar(): boolean {
@@ -49,7 +49,7 @@ export default function Login() {
     try {
       await iniciarSesion({ email: email.trim(), password })
       mostrarToast('Sesión iniciada. ¡Bienvenido de nuevo!', 'exito')
-      navegar('/')
+      navegar('/app')
     } catch (error) {
       console.error(error)
       if (error instanceof ErrorApi) {

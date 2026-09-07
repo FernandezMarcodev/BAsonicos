@@ -138,8 +138,8 @@ export default function Ayuda() {
               <EnlaceBoton variante="contorno" to="/login">
                 Iniciar sesión
               </EnlaceBoton>
-              <EnlaceBoton variante="texto" to="/">
-                Volver al inicio
+              <EnlaceBoton variante="texto" to="/app">
+                Volver a la app
               </EnlaceBoton>
             </div>
           </article>

@@ -38,7 +38,7 @@ export default function Registro() {
   const [enviando, setEnviando] = useState(false)
 
   if (usuario) {
-    return <Navigate to="/" replace />
+    return <Navigate to="/app" replace />
   }
 
   function passwordCumpleRequisitos(pw: string): boolean {
@@ -81,7 +81,7 @@ export default function Registro() {
         password,
       })
       mostrarToast('Cuenta creada. ¡Ya podés guardar favoritos!', 'exito')
-      navegar('/')
+      navegar('/app')
     } catch (error) {
       console.error(error)
       if (error instanceof ErrorApi && error.status === 409) {

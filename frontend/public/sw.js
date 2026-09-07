@@ -1,6 +1,6 @@
 /* Service Worker de BAsónicos: shell offline + notificaciones push. */
 
-const VERSION = 'bassonicos-v1'
+const VERSION = 'bassonicos-v2'
 const CACHE_APP = `${VERSION}-app`
 const RECURSOS_SHELL = ['/', '/index.html', '/manifest.json', '/logo.svg', '/icon-192.png', '/icon-512.png']
 
@@ -69,7 +69,7 @@ self.addEventListener('push', (evento) => {
     body: datos.cuerpo || 'Tus artistas tienen conciertos nuevos.',
     icon: datos.icono || '/icon-192.png',
     badge: datos.badge || '/icon-192.png',
-    data: { url: datos.url || '/' },
+    data: { url: datos.url || '/app' },
     tag: 'bassonicos-novedades',
     renotify: true,
   }
@@ -79,7 +79,7 @@ self.addEventListener('push', (evento) => {
 
 self.addEventListener('notificationclick', (evento) => {
   evento.notification.close()
-  const destino = (evento.notification.data && evento.notification.data.url) || '/'
+  const destino = (evento.notification.data && evento.notification.data.url) || '/app'
 
   evento.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientes) => {
