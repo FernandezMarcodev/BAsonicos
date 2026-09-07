@@ -242,7 +242,7 @@ export default function Inicio() {
             ref={refColumnaMapa}
             className={`${
               vista === 'mapa' ? 'flex' : 'hidden'
-            } h-[55vh] min-h-[380px] overflow-hidden rounded-3xl shadow-elevation-3 lg:sticky lg:top-24 lg:h-[calc(100vh-8.5rem)] lg:min-h-0 lg:flex`}
+            } z-0 h-[55vh] min-h-[380px] overflow-hidden rounded-3xl shadow-elevation-3 lg:sticky lg:top-24 lg:h-[calc(100vh-8.5rem)] lg:min-h-0 lg:flex`}
           >
             <Mapa
               centro={centroMapa}

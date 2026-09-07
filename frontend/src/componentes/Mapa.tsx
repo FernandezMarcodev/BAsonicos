@@ -84,6 +84,30 @@ function iconoParaGrupo(grupoConciertos: Concierto[], seleccionado: boolean): L.
   return L.divIcon({ html, className: '', iconSize: [24, 24], iconAnchor: [12, 12], popupAnchor: [0, -14] })
 }
 
+// Recalcula los panes de Leaflet cuando cambia el tamaño del contenedor o cuando
+// pasa de oculto (vista lista en mobile) a visible. Sin esto, en mobile los tiles
+// quedan mal dimensionados y se "derraman" superponiéndose con el contenido.
+function ObservarTamanoMapa() {
+  const mapa = useMap()
+  useEffect(() => {
+    const contenedor = mapa.getContainer()
+    const invalidar = () => mapa.invalidateSize()
+    let id: number
+    const aplazado = () => {
+      invalidar()
+      id = window.setTimeout(aplazado, 2000)
+    }
+    const observador = new ResizeObserver(invalidar)
+    observador.observe(contenedor)
+    id = window.setTimeout(aplazado, 300)
+    return () => {
+      observador.disconnect()
+      window.clearTimeout(id)
+    }
+  }, [mapa])
+  return null
+}
+
 function CambiarVistaMapa({ centro }: { centro: CentroMapa | null }) {
   const mapa = useMap()
   useEffect(() => {
@@ -308,7 +332,7 @@ export default function Mapa({
   }
 
   return (
-    <div className={`h-full min-h-[420px] w-full ${usarOscuro ? 'tiles-oscuro' : ''}`}>
+    <div className={`relative z-0 h-full w-full ${usarOscuro ? 'tiles-oscuro' : ''}`}>
       <MapContainer
         center={CENTRO_DEFECTO}
         zoom={11}
@@ -325,6 +349,7 @@ export default function Mapa({
       />
 
       <CambiarVistaMapa centro={centro} />
+      <ObservarTamanoMapa />
       <AjustarVistaRadio ubicacionUsuario={ubicacionUsuario} radioKm={radioKm} />
       <AjustarVistaInicial grupos={grupos} ubicacionUsuario={ubicacionUsuario} />
       <ControlarPopupSeleccion seleccionadoId={seleccionadoId} grupos={grupos} />
