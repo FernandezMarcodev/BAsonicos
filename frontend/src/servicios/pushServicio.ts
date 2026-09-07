@@ -53,7 +53,12 @@ export async function suscribirPush(clavePublicaVapid: string): Promise<PushSubs
 
   const registro = await registrarServiceWorker()
   const permiso = await Notification.requestPermission()
-  if (permiso !== 'granted') return null
+  if (permiso !== 'granted') {
+    if (permiso === 'denied') {
+      throw new Error('Permiso de notificaciones bloqueado en el navegador')
+    }
+    return null
+  }
 
   const clave = base64urlABytes(clavePublicaVapid)
   return registro.pushManager.subscribe({

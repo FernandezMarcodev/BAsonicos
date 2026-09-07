@@ -68,14 +68,18 @@ function ActivadorPush() {
     try {
       const suscripcion = await pushServicio.suscribirPush(claveVapid)
       if (!suscripcion) {
-        mostrarToast('Permiso de notificaciones denegado', 'error')
+        mostrarToast('No se concedió el permiso de notificaciones', 'error')
         return
       }
       await pushServicio.guardarSuscripcion(token, suscripcion)
       setActiva(true)
       mostrarToast('Notificaciones activadas', 'exito')
-    } catch {
-      mostrarToast('No se pudieron activar las notificaciones', 'error')
+    } catch (error) {
+      const mensaje =
+        error instanceof Error && error.message.includes('bloqueado')
+          ? 'Permiso de notificaciones bloqueado en el navegador. Habilitalo desde los ajustes del sitio.'
+          : 'No se pudieron activar las notificaciones'
+      mostrarToast(mensaje, 'error')
     } finally {
       setTrabajando(false)
     }
