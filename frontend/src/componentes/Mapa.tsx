@@ -113,6 +113,7 @@ function CambiarVistaMapa({ centro }: { centro: CentroMapa | null }) {
   useEffect(() => {
     if (!centro) return
     mapa.closePopup()
+    mapa.invalidateSize()
     mapa.setView([centro.lat, centro.lng], centro.zoom || 11, { animate: true, duration: 1 })
   }, [centro, mapa])
   return null

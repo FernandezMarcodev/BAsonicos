@@ -76,11 +76,22 @@ export default function Inicio() {
   function seleccionarConcierto(concierto: Concierto) {
     const coordenadas = concierto.ubicacion_detalle?.coordenadas
     if (!coordenadas || coordenadas.length !== 2) return
-    setCentroMapa({ lat: coordenadas[1], lng: coordenadas[0], zoom: 15 })
-    setConciertoSeleccionado(concierto)
+    const destino = { lat: coordenadas[1], lng: coordenadas[0], zoom: 15 }
     if (window.innerWidth < 1024) {
+      // En mobile el mapa arranca oculto (display:none). Primero lo mostramos y
+      // esperamos dos frames para que el navegador haga reflow y Leaflet calcule
+      // dimensiones reales antes de animar.
       setVista('mapa')
-      window.setTimeout(() => refColumnaMapa.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 50)
+      window.requestAnimationFrame(() => {
+        window.requestAnimationFrame(() => {
+          setCentroMapa(destino)
+          setConciertoSeleccionado(concierto)
+          window.setTimeout(() => refColumnaMapa.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 50)
+        })
+      })
+    } else {
+      setCentroMapa(destino)
+      setConciertoSeleccionado(concierto)
     }
   }
 
