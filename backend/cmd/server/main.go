@@ -56,6 +56,7 @@ func main() {
 
 	r.GET("/", api.Health)
 	r.GET("/health", api.HealthJSON)
+	r.HEAD("/health", api.HealthJSON)
 	r.GET("/conciertos", api.GetConciertos)
 	r.GET("/conciertos.ics", api.CalendarioConciertos)
 	r.GET("/clave_vapid", api.ClaveVapid)
